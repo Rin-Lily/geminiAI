@@ -13,9 +13,20 @@ client = discord.Client(intents=intents)
 
 chat_history = {}
 
+SYSTEM_PROMPT = """
+あなたはDiscordで動く親切なAIアシスタント「うちも」です。
+自然な日本語で会話してください。
+回答は必ず1つだけにしてください。
+選択肢のような回答はしないでください。
+"""
+
+MAX_HISTORY = 10
+
+
 @client.event
 async def on_ready():
     print(f"ログインしました: {client.user}")
+
 
 @client.event
 async def on_message(message):
@@ -25,13 +36,13 @@ async def on_message(message):
 
     user_id = message.author.id
 
+    # 履歴リセット
     if message.content == "/reset":
         chat_history[user_id] = []
         await message.channel.send("会話履歴をリセットしました。")
         return
 
-    # BOTメンション確認
-    if message.mentions and message.mentions[0].id == client.user.id:
+    if client.user in message.mentions:
 
         prompt = message.content.replace(f"<@{client.user.id}>", "").strip()
 
@@ -43,19 +54,31 @@ async def on_message(message):
 
         chat_history[user_id].append(f"User: {prompt}")
 
-        conversation = "\n".join(chat_history[user_id])
+        # 履歴制限
+        chat_history[user_id] = chat_history[user_id][-MAX_HISTORY:]
 
-        response = client_gemini.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=conversation,
-        )
+        conversation = SYSTEM_PROMPT + "\n" + "\n".join(chat_history[user_id])
 
-        reply = response.text if response.text else "返信を取得できませんでした。"
+        try:
+            async with message.channel.typing():
+
+                response = client_gemini.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=conversation,
+                )
+
+                reply = response.text
+
+        except Exception as e:
+            print(e)
+            await message.channel.send("エラーが発生しました。")
+            return
 
         chat_history[user_id].append(f"AI: {reply}")
 
-        # 2000文字制限対策
+        # Discordは2000文字制限
         for i in range(0, len(reply), 2000):
             await message.channel.send(reply[i:i+2000])
+
 
 client.run(DISCORD_TOKEN)
