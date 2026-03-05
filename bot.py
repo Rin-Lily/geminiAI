@@ -11,21 +11,24 @@ intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 
-# 会話履歴
+# 履歴保存
 chat_history = {}
 
+SYSTEM_PROMPT = """
+あなたはDiscordで動く親切なAIアシスタント「うちも」です。
+自然な日本語で会話してください。
+回答は必ず1つだけにしてください。
+選択肢形式は使わないでください。
+"""
+
+# 履歴最大数
 MAX_HISTORY = 10
 
-SYSTEM_PROMPT = """
-あなたはDiscordで動くAIアシスタント「うちも」です。
-変な人格は出さないように、親切で自然な日本語で会話してください。
-自分のことは「私」と呼びます。
-回答は必ず1つだけにしてください。
-"""
 
 @client.event
 async def on_ready():
     print(f"ログインしました: {client.user}")
+
 
 @client.event
 async def on_message(message):
@@ -33,64 +36,69 @@ async def on_message(message):
     if message.author.bot:
         return
 
+    # ======================
+    # 履歴キー
+    # ======================
+    guild_id = message.guild.id if message.guild else "dm"
     user_id = message.author.id
+    history_key = f"{guild_id}-{user_id}"
 
-    # 履歴リセット
+    # ======================
+    # リセットコマンド
+    # ======================
     if message.content == "/reset":
-        chat_history[user_id] = []
+        chat_history[history_key] = []
         await message.channel.send("会話履歴をリセットしました。")
         return
 
-    # メンションされたときだけ反応
-    if client.user in message.mentions:
+    # ======================
+    # メンション確認
+    # ======================
+    if not message.content.startswith(f"<@{client.user.id}>") and not message.content.startswith(f"<@!{client.user.id}>"):
+        return
 
-        prompt = message.content.replace(f"<@{client.user.id}>", "").strip()
+    prompt = message.content.replace(f"<@{client.user.id}>", "").replace(f"<@!{client.user.id}>", "").strip()
 
-        if prompt == "":
-            return
+    if prompt == "":
+        return
 
-        if user_id not in chat_history:
-            chat_history[user_id] = []
+    # ======================
+    # 履歴初期化
+    # ======================
+    if history_key not in chat_history:
+        chat_history[history_key] = []
 
-        # ユーザー履歴追加
-        chat_history[user_id].append({
-            "role": "user",
-            "parts": [prompt]
-        })
+    chat_history[history_key].append(f"User: {prompt}")
 
-        # 履歴制限
-        chat_history[user_id] = chat_history[user_id][-MAX_HISTORY:]
+    # ======================
+    # 履歴制限
+    # ======================
+    chat_history[history_key] = chat_history[history_key][-MAX_HISTORY:]
 
-        contents = [
-            {
-                "role": "user",
-                "parts": [SYSTEM_PROMPT]
-            }
-        ] + chat_history[user_id]
+    conversation = SYSTEM_PROMPT + "\n" + "\n".join(chat_history[history_key])
 
-        try:
-            async with message.channel.typing():
+    try:
+        async with message.channel.typing():
 
-                response = client_gemini.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=contents
-                )
+            response = client_gemini.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=conversation,
+            )
 
-                reply = response.text.strip()
+            reply = response.text
 
-        except Exception as e:
-            print(e)
-            await message.channel.send("エラーが発生しました。")
-            return
+    except Exception as e:
+        print(e)
+        await message.channel.send("エラーが発生しました。")
+        return
 
-        # AI履歴追加
-        chat_history[user_id].append({
-            "role": "model",
-            "parts": [reply]
-        })
+    chat_history[history_key].append(f"AI: {reply}")
 
-        # Discord2000文字制限
-        for i in range(0, len(reply), 2000):
-            await message.channel.send(reply[i:i+2000])
+    # ======================
+    # Discord文字制限
+    # ======================
+    for i in range(0, len(reply), 2000):
+        await message.channel.send(reply[i:i+2000])
+
 
 client.run(DISCORD_TOKEN)
