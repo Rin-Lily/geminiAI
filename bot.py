@@ -30,7 +30,8 @@ async def on_message(message):
         await message.channel.send("会話履歴をリセットしました。")
         return
 
-    if client.user in message.mentions:
+    # BOTメンション確認
+    if message.mentions and message.mentions[0].id == client.user.id:
 
         prompt = message.content.replace(f"<@{client.user.id}>", "").strip()
 
@@ -49,10 +50,11 @@ async def on_message(message):
             contents=conversation,
         )
 
-        reply = response.text
+        reply = response.text if response.text else "返信を取得できませんでした。"
 
         chat_history[user_id].append(f"AI: {reply}")
 
+        # 2000文字制限対策
         for i in range(0, len(reply), 2000):
             await message.channel.send(reply[i:i+2000])
 
