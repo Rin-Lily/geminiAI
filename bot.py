@@ -5,6 +5,8 @@ from google import genai
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
+AI_CHANNEL_ID = 1478785669764481125  # AIチャンネルID
+
 client_gemini = genai.Client(api_key=GEMINI_API_KEY)
 
 intents = discord.Intents.default()
@@ -14,10 +16,8 @@ client = discord.Client(intents=intents)
 chat_history = {}
 
 SYSTEM_PROMPT = """
-あなたはDiscordで動く親切なAIアシスタント「うちも」です。
+あなたはDiscordで動く親切なAIアシスタントです。
 自然な日本語で会話してください。
-回答は必ず1つだけにしてください。
-選択肢形式の回答はしないでください。
 """
 
 MAX_HISTORY = 10
@@ -31,35 +31,23 @@ async def on_ready():
 @client.event
 async def on_message(message):
 
-    # Botの発言は無視
     if message.author.bot:
         return
 
-    # メンションされていなければ無視（2重返信防止）
-    if f"<@{client.user.id}>" not in message.content:
+    # AIチャンネル以外は無視
+    if message.channel.id != AI_CHANNEL_ID:
         return
 
     user_id = message.author.id
-
-    # 履歴リセット
-    if message.content.strip() == "/reset":
-        chat_history[user_id] = []
-        await message.channel.send("会話履歴をリセットしました。")
-        return
-
-    # メンション削除
-    prompt = message.content.replace(f"<@{client.user.id}>", "").strip()
+    prompt = message.content.strip()
 
     if prompt == "":
         return
 
-    # 履歴初期化
     if user_id not in chat_history:
         chat_history[user_id] = []
 
     chat_history[user_id].append(f"User: {prompt}")
-
-    # 履歴制限
     chat_history[user_id] = chat_history[user_id][-MAX_HISTORY:]
 
     conversation = SYSTEM_PROMPT + "\n" + "\n".join(chat_history[user_id])
@@ -80,10 +68,8 @@ async def on_message(message):
         await message.channel.send("エラーが発生しました。")
         return
 
-    # 履歴保存
     chat_history[user_id].append(f"AI: {reply}")
 
-    # Discord2000文字制限対策
     for i in range(0, len(reply), 2000):
         await message.channel.send(reply[i:i+2000])
 
