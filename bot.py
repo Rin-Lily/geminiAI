@@ -45,7 +45,7 @@ async def on_message(message):
         conversation = "\n".join(chat_history[user_id])
 
         response = client_gemini.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-1.5-flash-latest",
             contents=conversation,
         )
 
