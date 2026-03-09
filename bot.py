@@ -73,7 +73,7 @@ async def on_message(message):
     chat_history[user_id].append(f"AI: {reply}")
 
     for i in range(0, len(reply), 2000):
-        await message.channel.send(reply[i:i+2000])
+        await message.channel.send(reply[i:i+2000],silent=True)
 
 
 client.run(DISCORD_TOKEN)
